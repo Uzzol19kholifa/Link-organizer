@@ -9,21 +9,14 @@ x.com লিংক deduplicate ও batch করার Telegram bot।
 - ৫টা করে batch করে আলাদা message এ পাঠায়
 - Reaction দিলে batch message delete হয়ে যায়
 
-## Deploy on Render
+## Deploy on Render (Free Tier — Web Service)
 
-### 1. Blueprint (recommended)
-
-1. GitHub এ এই repo connect করো Render এ
-2. **New → Blueprint** select করো — `render.yaml` automatically detect হবে
-3. `BOT_TOKEN` environment variable set করো (Render dashboard → Environment)
-4. Deploy!
-
-### 2. Manual
-
-1. **New → Background Worker** → Docker select করো
-2. Repository connect করো
-3. Environment variable add করো: `BOT_TOKEN` = তোমার Telegram bot token
-4. Deploy!
+1. **+ New → Web Service** select করো
+2. GitHub repo connect করো (`Uzzol19kholifa/Link-organizer`)
+3. Runtime: **Docker** select করো
+4. Instance Type: **Free** select করো
+5. Environment variable add করো: `BOT_TOKEN` = তোমার Telegram bot token
+6. **Create Web Service** click করো — Deploy!
 
 ## Local Development
 

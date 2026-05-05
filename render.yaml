@@ -1,5 +1,5 @@
 services:
-  - type: worker
+  - type: web
     name: link-dedup-bot
     runtime: docker
     dockerfilePath: ./Dockerfile
