@@ -15,6 +15,8 @@ Commands:
 
 import re
 import os
+import json
+import asyncio
 import logging
 from telegram import Update
 from telegram.ext import (
@@ -25,6 +27,8 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+from tornado.web import Application as TornadoApp, RequestHandler
+import tornado.ioloop
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s",
@@ -32,6 +36,8 @@ logging.basicConfig(
 )
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
+PORT = int(os.environ.get("PORT", 10000))
+RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 BATCH_SIZE = 5  # প্রতিটা batch এ কতটা link
 
 
@@ -185,17 +191,80 @@ async def handle_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
 
 
 # ──────────────────────────────────────────────
+# Health check + Webhook server
+# ──────────────────────────────────────────────
+
+class HealthHandler(RequestHandler):
+    def get(self):
+        self.write("OK")
+
+    def head(self):
+        self.set_status(200)
+        self.finish()
+
+
+class WebhookHandler(RequestHandler):
+    def initialize(self, ptb_app):
+        self.ptb_app = ptb_app
+
+    async def post(self):
+        data = json.loads(self.request.body)
+        update = Update.de_json(data, self.ptb_app.bot)
+        await self.ptb_app.update_queue.put(update)
+        self.set_status(200)
+        self.finish()
+
+
+# ──────────────────────────────────────────────
 # Main
 # ──────────────────────────────────────────────
 
-def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+def build_app():
+    app = ApplicationBuilder().token(BOT_TOKEN).updater(None).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageReactionHandler(handle_reaction))
-    logging.info("Bot চালু হচ্ছে...")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    return app
+
+
+async def run_webhook():
+    ptb_app = build_app()
+    await ptb_app.initialize()
+    await ptb_app.start()
+
+    webhook_url = f"https://{RENDER_EXTERNAL_HOSTNAME}/webhook"
+    await ptb_app.bot.set_webhook(
+        url=webhook_url,
+        allowed_updates=Update.ALL_TYPES,
+    )
+    logging.info("Webhook set: %s", webhook_url)
+
+    tornado_app = TornadoApp([
+        (r"/", HealthHandler),
+        (r"/webhook", WebhookHandler, {"ptb_app": ptb_app}),
+    ])
+    tornado_app.listen(PORT, address="0.0.0.0")
+    logging.info("Server চালু হচ্ছে port %d এ...", PORT)
+
+    try:
+        await asyncio.Event().wait()
+    finally:
+        await ptb_app.stop()
+        await ptb_app.shutdown()
+
+
+def main():
+    if RENDER_EXTERNAL_HOSTNAME:
+        asyncio.run(run_webhook())
+    else:
+        app = ApplicationBuilder().token(BOT_TOKEN).build()
+        app.add_handler(CommandHandler("start", cmd_start))
+        app.add_handler(CommandHandler("help", cmd_help))
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+        app.add_handler(MessageReactionHandler(handle_reaction))
+        logging.info("Polling mode চালু হচ্ছে (local dev)...")
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
