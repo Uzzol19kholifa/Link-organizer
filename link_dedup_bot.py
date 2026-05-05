@@ -198,6 +198,10 @@ class HealthHandler(RequestHandler):
     def get(self):
         self.write("OK")
 
+    def head(self):
+        self.set_status(200)
+        self.finish()
+
 
 class WebhookHandler(RequestHandler):
     def initialize(self, ptb_app):
