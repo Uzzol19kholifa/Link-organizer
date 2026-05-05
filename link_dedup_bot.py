@@ -53,13 +53,13 @@ def extract_links(text: str) -> list[str]:
         u = re.sub(r'(/status/\d+)\?[^\s]*', r'\1', u)
 
         # Format: /i/status/DIGITS
-        mi = re.match(r'^(https?://x\.com/i/status/(\d+))', u)
+        mi = re.match(r'^(https?://x\.com/i/status/(\d+))', u, re.IGNORECASE)
         if mi:
             results.append(f"https://x.com/i/status/{mi.group(2)[:19]}")
             continue
 
         # Format: /USER/status/DIGITS
-        m = re.match(r'^https?://x\.com/([A-Za-z0-9_.\-]+)/status/(\d+)', u)
+        m = re.match(r'^https?://x\.com/([A-Za-z0-9_.\-]+)/status/(\d+)', u, re.IGNORECASE)
         if m:
             results.append(f"https://x.com/{m.group(1)}/status/{m.group(2)[:19]}")
 
@@ -151,6 +151,7 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(summary)
 
     # প্রতিটা batch আলাদা message — code block এ দিলে TG auto Copy button দেয়
+    batch_msg_ids = ctx.chat_data.setdefault("batch_msg_ids", set())
     for i, batch in enumerate(result["batches"], start=1):
         lines = "\n".join(batch)
         # MarkdownV2 তে special chars escape করতে হয় header এ
@@ -159,13 +160,17 @@ async def handle_text(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
             return re.sub(r'([_\*\[\]\(\)~`>#+\-=|{}.!\\])', r'\\\1', s)
         safe_header = mdv2_escape(header)
         msg = f"{safe_header}\n\n```\n{lines}\n```"
-        await update.message.reply_text(msg, parse_mode="MarkdownV2")
+        sent = await update.message.reply_text(msg, parse_mode="MarkdownV2")
+        batch_msg_ids.add(sent.message_id)
 
 
 async def handle_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
-    """যেকোনো reaction দিলে সেই batch message delete হয়ে যাবে।"""
+    """Bot এর batch message এ reaction দিলে সেটা delete হয়ে যাবে।"""
     reaction = update.message_reaction
     if not reaction:
+        return
+    batch_msg_ids = ctx.chat_data.get("batch_msg_ids", set())
+    if reaction.message_id not in batch_msg_ids:
         return
     # শুধু নতুন reaction add হলে delete করবো (remove করলে না)
     if reaction.new_reaction:
@@ -174,6 +179,7 @@ async def handle_reaction(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 chat_id=reaction.chat.id,
                 message_id=reaction.message_id,
             )
+            batch_msg_ids.discard(reaction.message_id)
         except Exception:
             pass  # already deleted বা permission নেই
 
